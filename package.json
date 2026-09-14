@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "data": "tsx scripts/build-data.ts",
-    "prebuild": "npm run data",
+    "prebuild": "npm run check:env && npm run data",
     "build": "next build",
     "postbuild": "npm run check:browsers",
     "start": "next start",
@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node e2e/run.mjs",
-    "check:browsers": "node scripts/check-browser-support.mjs"
+    "check:browsers": "node scripts/check-browser-support.mjs",
+    "check:env": "tsx scripts/check-env.ts"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

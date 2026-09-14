@@ -1,6 +1,7 @@
 import { preconnect, preload } from "react-dom";
 
 import ResultsScreen from "@/components/ResultsScreen";
+import { alertStoreConfig } from "@/lib/alert-store";
 import { dataUrl } from "@/lib/data-client";
 
 export default function HomePage() {
@@ -10,5 +11,6 @@ export default function HomePage() {
   }
   // Map tiles are the largest paint; open the connection to OneMap early.
   preconnect("https://www.onemap.gov.sg");
-  return <ResultsScreen />;
+  // Read at build time: adding the alert store later needs a redeploy.
+  return <ResultsScreen alertsEnabled={alertStoreConfig() !== null} />;
 }

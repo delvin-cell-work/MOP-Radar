@@ -515,6 +515,95 @@ const scenarios = {
     return errors;
   },
 
+  async "cea-footer"() {
+    const { page, errors } = await openPage({ savedTown: "toa-payoh" });
+    for (const path of ["/", "/unsubscribe"]) {
+      await page.goto(`${BASE}${path}`);
+      const footer = page.locator("footer");
+      await footer.waitFor();
+      const text = (await footer.textContent()) ?? "";
+      check(text.includes("MOP dates are derived from public HDB completion and resale data"), `${path}: disclosure shown`);
+      if (process.env.EXPECT_AGENT === "1") {
+        check(/CEA Reg\. No\. \S+/.test(text) && /Licence No\. \S+/.test(text), `${path}: CEA details shown`);
+        const box = await footer.boundingBox();
+        const viewport = page.viewportSize();
+        check(box && box.y + box.height <= viewport.height + 1, `${path}: footer fully on screen`);
+      }
+    }
+    return errors;
+  },
+
+  async "alert-signup"() {
+    const { page, errors } = await openPage({
+      savedTown: "toa-payoh",
+      storage: {
+        "mop-radar:watchlist:v1": JSON.stringify([{ id: "111a-alkaff-cres", town: "toa-payoh", addedAt: "x" }]),
+      },
+    });
+    const posted = [];
+    let reply = { status: 201, body: { ok: true } };
+    await page.route("**/api/alerts", async (route) => {
+      posted.push(route.request().postDataJSON());
+      await route.fulfill({ status: reply.status, contentType: "application/json", body: JSON.stringify(reply.body) });
+    });
+    await gotoHome(page);
+    await watchlistButton(page).click();
+    await waitForHeading(page, /^Watchlist$/);
+    const form = sheet(page).getByRole("region", { name: "Email me when blocks on my watchlist hit MOP" });
+    await page.waitForTimeout(300);
+    if ((await form.count()) === 0) {
+      check(process.env.EXPECT_ALERTS !== "1", "alert signup shown when the store is configured");
+      console.log("  (alert signup not enabled on this build; skipped)");
+      return errors;
+    }
+
+    const consent = form.getByRole("checkbox");
+    check(!(await consent.isChecked()), "consent box starts unticked");
+    const submit = form.getByRole("button", { name: "Email me" });
+    await submit.click();
+    await form.getByText("Enter an email address").waitFor();
+    check(
+      await page.evaluate(() => document.activeElement?.getAttribute("type") === "email"),
+      "focus moves to the email field",
+    );
+    await form.getByLabel("Email address", { exact: true }).fill("buyer@example.com");
+    await submit.click();
+    await form.getByText("Tick the box to agree").waitFor();
+    check(posted.length === 0, "nothing sent without consent");
+
+    await consent.check();
+    reply = { status: 502, body: { error: "Couldn't save your signup. Try again in a moment." } };
+    await submit.click();
+    await form.getByRole("alert").getByText("Couldn't save your signup").waitFor();
+
+    reply = { status: 201, body: { ok: true } };
+    await submit.click();
+    await form.getByText("You're signed up").waitFor();
+    const body = posted[posted.length - 1];
+    check(body.email === "buyer@example.com" && body.consent === true, "email and consent sent");
+    check(body.watchlist.length === 1 && body.watchlist[0].id === "111a-alkaff-cres", "watchlist sent");
+    check(body.town === "toa-payoh" && body.website === "", "town sent, hidden field empty");
+    await noHorizontalScroll(page, "alert signup");
+    // Chrome logs the deliberately mocked 502 above as a console error.
+    return errors.filter((message) => !/status of 502/.test(message));
+  },
+
+  async "unsubscribe-page"() {
+    const { page, errors } = await openPage({ viewport: NARROW });
+    await page.route("**/api/alerts/unsubscribe", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }),
+    );
+    await page.goto(`${BASE}/unsubscribe`);
+    await page.getByText("This link is missing its unsubscribe code").waitFor();
+    await page.goto(`${BASE}/unsubscribe?token=${"a".repeat(43)}`);
+    await page.getByRole("button", { name: "Unsubscribe" }).click();
+    await page.getByText("You're unsubscribed").waitFor();
+    await noHorizontalScroll(page, "unsubscribe page");
+    const robots = await page.locator('meta[name="robots"]').getAttribute("content");
+    check(/noindex/.test(robots ?? ""), "unsubscribe page is not indexed");
+    return errors;
+  },
+
   async "reflow-320"() {
     const { block } = await sparklineBlock();
     const { page, errors } = await openPage({ viewport: NARROW, savedTown: "toa-payoh" });

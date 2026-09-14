@@ -1,8 +1,57 @@
 /**
  * The agent behind this white-label build. NEXT_PUBLIC_* values are inlined at
- * build time, so they must be referenced literally. Step 5 makes the build fail
- * when they're missing; until then, contact links are hidden without them.
+ * build time, so they must be referenced literally. Production builds fail when
+ * any are missing (scripts/check-env.ts and next.config.ts), because the CEA
+ * details must show on every page.
  */
+
+export const REQUIRED_AGENT_ENV = [
+  "NEXT_PUBLIC_AGENT_NAME",
+  "NEXT_PUBLIC_CEA_REG_NO",
+  "NEXT_PUBLIC_AGENCY_NAME",
+  "NEXT_PUBLIC_AGENCY_LICENCE_NO",
+  "NEXT_PUBLIC_AGENT_WHATSAPP",
+] as const;
+
+/** Names of required agent variables that are unset, blank or (for WhatsApp) not a phone number. */
+export function missingAgentEnv(env: Readonly<Record<string, string | undefined>>): string[] {
+  return REQUIRED_AGENT_ENV.filter((name) => {
+    const value = env[name]?.trim();
+    if (!value) return true;
+    return name === "NEXT_PUBLIC_AGENT_WHATSAPP" && normaliseWhatsappNumber(value) === null;
+  });
+}
+
+export function agentEnvErrorMessage(missing: readonly string[]): string {
+  return (
+    `MOP Radar can't be built without the agent's CEA details. Missing or invalid: ${missing.join(", ")}.\n` +
+    "Set them in Vercel (Project → Settings → Environment Variables) or in .env.local. " +
+    "NEXT_PUBLIC_AGENT_WHATSAPP is the number with country code, e.g. 6591234567."
+  );
+}
+
+/** The CEA details every page must show. */
+export interface AgentDetails {
+  name: string;
+  ceaRegNo: string;
+  agencyName: string;
+  agencyLicenceNo: string;
+}
+
+export function agentDetails(
+  env: { name?: string; ceaRegNo?: string; agencyName?: string; agencyLicenceNo?: string } = {
+    name: process.env.NEXT_PUBLIC_AGENT_NAME,
+    ceaRegNo: process.env.NEXT_PUBLIC_CEA_REG_NO,
+    agencyName: process.env.NEXT_PUBLIC_AGENCY_NAME,
+    agencyLicenceNo: process.env.NEXT_PUBLIC_AGENCY_LICENCE_NO,
+  },
+): AgentDetails | null {
+  const name = env.name?.trim();
+  const ceaRegNo = env.ceaRegNo?.trim();
+  const agencyName = env.agencyName?.trim();
+  const agencyLicenceNo = env.agencyLicenceNo?.trim();
+  return name && ceaRegNo && agencyName && agencyLicenceNo ? { name, ceaRegNo, agencyName, agencyLicenceNo } : null;
+}
 
 export interface AgentContact {
   name: string;

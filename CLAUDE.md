@@ -20,7 +20,8 @@ otherwise.
 4. **Done (2026-09-15):** filters, block detail, watchlist, current-location pin with "Locate me".
    Built overnight at the user's request ("proceed with step 5 after and push to live"), so the
    user has not reviewed it yet.
-5. **In progress (2026-09-15):** email alert signup, CEA footer, polish. See Remaining work.
+5. **Built (2026-09-15), pending the user's env setup:** CEA footer, email alert signup,
+   unsubscribe. See "Email alerts and CEA footer (step 5)" and Open items.
 
 ### Session log
 
@@ -80,6 +81,11 @@ otherwise.
 - On desktop, the "Just passed MOP" tab label wraps to two lines in the 420 px side panel.
   Shortening the label or widening the panel was offered.
 - Map dot taps aren't covered by `e2e/run.mjs` (dots are canvas-drawn); check them by hand.
+- **Before step 5 can deploy, the user must add the five `NEXT_PUBLIC_` agent variables in Vercel**
+  (real CEA details; never invent them). Without them the Vercel build fails by design and
+  production keeps serving the previous deploy. The weekly refresh's deploy would fail too.
+- For email alerts, add Upstash for Redis from the Vercel Marketplace (sets `KV_REST_API_URL`
+  and `KV_REST_API_TOKEN`), then redeploy. No alert emails are sent yet.
 
 **Local dev:**
 - `npm run data` (~1–3 min; it must finish before starting anything else in that terminal),
@@ -88,19 +94,47 @@ otherwise.
   verify dev mode against it rather than starting another.
 - To see the first-visit flow again, clear the `mop-radar:town` localStorage key.
 
-## Remaining work (from the product brief)
+## Email alerts and CEA footer (step 5)
 
-**Step 5: email capture, compliance footer, polish**
-- **Optional email alert signup** at the bottom of the watchlist: "Email me when blocks on my
-  watchlist hit MOP."
-  - The email field and PDPA consent checkbox (unticked by default) are both required, with a
-    plain-English purpose statement.
-  - POST to a single serverless endpoint that stores `{email, watchlist, town, consent
-    timestamp}`. A single table or KV store is fine.
-  - This is the agent's lead capture. It must be optional and never a wall in front of results.
-  - Every email must carry a working unsubscribe link.
-- **CEA footer on every route** (see Compliance), sourced from env vars, always visible. The
-  build fails if any are missing.
+- **CEA footer** (`components/SiteFooter.tsx`, root layout, every route): the verbatim disclosure,
+  then one always-visible line "Name · CEA Reg. No. … · Agency · Licence No. …".
+- **Build fails without agent details.** `REQUIRED_AGENT_ENV` in `lib/agent.ts`:
+  `NEXT_PUBLIC_AGENT_NAME`, `NEXT_PUBLIC_CEA_REG_NO`, `NEXT_PUBLIC_AGENCY_NAME`,
+  `NEXT_PUBLIC_AGENCY_LICENCE_NO`, `NEXT_PUBLIC_AGENT_WHATSAPP` (digits with country code).
+  - `npm run check:env` (`scripts/check-env.ts`, loads `.env*` via `@next/env`) runs first in
+    `prebuild`, before the slow data pipeline.
+  - `next.config.ts` repeats the check in the production-build phase, for `npx next build`. It
+    skips `next typegen`, so `npm run typecheck` works without the variables.
+  - `next dev` still runs without them and shows a red "details missing" footer line.
+  - They are `NEXT_PUBLIC_`, so changing them needs a redeploy.
+- **Email alert signup** (`components/AlertSignup.tsx`) under the watchlist, only when the
+  watchlist has blocks and the store is configured:
+  - Required email plus a required, unticked PDPA consent box naming the agent and agency
+    (`consentStatement`), and a purpose statement (`PURPOSE_STATEMENT`). Optional, never a wall.
+  - Hidden honeypot field; filled-in requests get a fake success and store nothing.
+  - POSTs `{email, consent, watchlist, town, website}` to `app/api/alerts/route.ts`: same-origin
+    check, 20 KB body limit, Zod (`lib/alert-schema.ts`), then `saveSignup`.
+- **Store** (`lib/alert-store.ts`): Redis over Upstash's REST API with plain fetch.
+  - Env: `KV_REST_API_URL` + `KV_REST_API_TOKEN` (Vercel Marketplace "Upstash for Redis"), or
+    `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`.
+  - `app/page.tsx` reads the config at build time, so the form appears only after a redeploy.
+    Without a store the API returns 503.
+  - Keys: `mop-radar:alerts:signup:<sha256(email)>` → JSON record `{email, watchlist, town,
+    consented_at, consent_statement, consent_version, created_at, updated_at,
+    unsubscribe_token, unsubscribe_url, one_click_unsubscribe_url}`;
+    `mop-radar:alerts:token:<token>` → hash; set `mop-radar:alerts:signups`.
+  - Signing up again with the same email updates the watchlist and consent time and keeps the
+    token. Email addresses are never logged.
+- **Unsubscribe:** `/unsubscribe?token=…` (static page, not indexed) has a button that POSTs to
+  `app/api/alerts/unsubscribe/route.ts`, which deletes the record, token and set entry. That
+  route also accepts `?token=` for RFC 8058 one-click unsubscribe. POST only, so link scanners
+  can't unsubscribe people.
+- **Sending emails is not built.** Whatever sends alerts must put the record's `unsubscribe_url`
+  in every email, and should send `List-Unsubscribe: <one_click_unsubscribe_url>` with
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+- Consent text changes: bump `CONSENT_VERSION` in `lib/alerts.ts`.
+- Optional `NEXT_PUBLIC_SITE_URL` fixes the domain used in unsubscribe links; otherwise the
+  request's host is used.
 
 ## Filters, block detail, watchlist (step 4)
 
@@ -151,6 +185,7 @@ npm run typecheck       # next typegen && tsc --noEmit
 npm run lint
 npm run build           # prebuild: npm run data · postbuild: npm run check:browsers
 npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iOS 15.0 can't run
+npm run check:env       # fails if the agent's CEA env vars are missing (runs in prebuild)
 npm run e2e -- <url>    # browser scenarios (system Chrome via playwright-core); ONLY=name,name to filter
 ```
 
@@ -191,7 +226,10 @@ npm run e2e -- <url>    # browser scenarios (system Chrome via playwright-core);
   schemas, CSV parser, `geo-match.ts`. `scripts/check-browser-support.mjs`: post-build iOS 15
   guard. Never import `scripts/` from `app/` or `components/`.
 - `tests/`: vitest (pure logic only; UI is verified in a real browser).
-- `e2e/run.mjs`: browser scenarios for location, regressions, framing, reflow and step 4 flows.
+- `e2e/run.mjs`: browser scenarios for location, regressions, framing, reflow, step 4 flows, the
+  CEA footer, alert signup and unsubscribe. Set `EXPECT_AGENT=1` / `EXPECT_ALERTS=1` when the
+  build has agent details / an alert store, so those checks are enforced rather than skipped.
+- `app/api/alerts/`: signup and unsubscribe route handlers. `app/unsubscribe/`: unsubscribe page.
 - `.github/workflows/refresh-data.yml`: weekly cron → tests → pipeline → Vercel deploy hook
   (secret `VERCEL_DEPLOY_HOOK_URL`).
 
@@ -403,9 +441,8 @@ simulated LCP of 3.5 s (392–423 ms observed) and layout shift 0.001.
 - CEA: a shared layout footer on **every** route shows the salesperson's registered name, CEA
   registration number, agency name and agency licence number, from `NEXT_PUBLIC_AGENT_NAME`,
   `NEXT_PUBLIC_CEA_REG_NO`, `NEXT_PUBLIC_AGENCY_NAME`, `NEXT_PUBLIC_AGENCY_LICENCE_NO`
-  (plus `NEXT_PUBLIC_AGENT_WHATSAPP`). The build must fail if any are missing. It is not built
-  yet (step 5). The footer already holds the disclosure. Placement in the full-screen map
-  layout (always visible vs one tap away) is still to be confirmed with the user.
+  (plus `NEXT_PUBLIC_AGENT_WHATSAPP`). The build must fail if any are missing. Built in step 5: always
+  visible, one line under the disclosure.
 - PDPA: the email consent checkbox is unticked by default and required, with a plain-English
   purpose statement. Every email carries a working unsubscribe link.
 - **No valuations.** Show historical transacted prices as dated facts only. Never write "fair

@@ -51,6 +51,7 @@ import {
 import { DEFAULT_VIEW, neighbouringTowns, RESULTS_VIEWS, sortBlocksForView, type ResultsView } from "@/lib/views";
 import { isWatched, toggleWatched } from "@/lib/watchlist";
 
+import { AlertSignup } from "./AlertSignup";
 import { BlockCard } from "./BlockCard";
 import { BlockDetail } from "./BlockDetail";
 import { EmptyState } from "./EmptyState";
@@ -176,7 +177,12 @@ const BACK_ICON = (
 const HEADER_BUTTON_CLASS =
   "flex h-11 min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50";
 
-export default function ResultsScreen() {
+interface ResultsScreenProps {
+  /** True when the email alert store is configured for this deployment. */
+  alertsEnabled: boolean;
+}
+
+export default function ResultsScreen({ alertsEnabled }: ResultsScreenProps) {
   const [view, setView] = useState<ResultsView>(DEFAULT_VIEW);
   const savedTownSlug = useSyncExternalStore(subscribeToSavedTown, readSavedTownSlug, nothingOnServer);
   const filters = useSyncExternalStore(filtersStore.subscribe, filtersStore.read, filtersStore.serverSnapshot);
@@ -760,6 +766,7 @@ export default function ResultsScreen() {
         onOpen={openListBlock}
         onToggleWatch={toggleWatch}
         onRemove={removeWatched}
+        footer={alertsEnabled && watchlist.length > 0 ? <AlertSignup watchlist={watchlist} town={listTownSlug} /> : null}
       />
     );
   } else {
