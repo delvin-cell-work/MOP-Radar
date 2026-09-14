@@ -7,6 +7,7 @@ import {
   type MopStatus,
   type ResaleActivity,
   type TownBlocksFile,
+  type TownTransactionsFile,
 } from "./data-contract";
 
 /**
@@ -19,6 +20,7 @@ export const dataUrl = {
   meta: () => "/data/meta.json",
   town: (slug: string) => `/data/towns/${slug}.json`,
   map: (cohort: Cohort) => `/data/map/${cohort}.json`,
+  transactions: (slug: string) => `/data/tx/${slug}.json`,
 };
 
 const requests = new Map<string, Promise<unknown>>();
@@ -48,6 +50,7 @@ function loadJson<T extends { schema_version: number }>(url: string): Promise<T>
 export const loadMeta = () => loadJson<DataMeta>(dataUrl.meta());
 export const loadTownBlocks = (slug: string) => loadJson<TownBlocksFile>(dataUrl.town(slug));
 export const loadMapCohort = (cohort: Cohort) => loadJson<MapPointsFile>(dataUrl.map(cohort));
+export const loadTownTransactions = (slug: string) => loadJson<TownTransactionsFile>(dataUrl.transactions(slug));
 
 export interface MapBlock {
   id: string;

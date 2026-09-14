@@ -10,20 +10,17 @@ import type { Cohort } from "@/lib/data-contract";
 import type { MapBlock } from "@/lib/data-client";
 import { SINGAPORE_BOUNDS, SINGAPORE_ISLAND_BOUNDS, type LatLng } from "@/lib/geo";
 
-/** A request to frame part of Singapore. Applied when `key` changes. */
-export interface MapFrame {
-  key: string;
-  /** Points to fit, or null for the whole island. */
-  points: readonly LatLng[] | null;
-  /** Where to centre when there are no points, e.g. a town with no results in this tab. */
-  center?: LatLng;
-}
-
-/** A request to pan to one block. Applied when `key` changes. */
-export interface MapBlockFocus {
-  key: string;
-  center: LatLng;
-}
+/**
+ * A request to frame part of Singapore. Each key is applied at most once, so
+ * returning to a frame that was already shown (closing block detail, say)
+ * leaves the map where the visitor put it.
+ */
+export type MapFrame =
+  | { key: string; kind: "island" }
+  /** Fit these points, or centre on `center` when there are none. */
+  | { key: string; kind: "points"; points: readonly LatLng[]; center?: LatLng }
+  /** Centre one block, zooming in if the map is further out than street level. */
+  | { key: string; kind: "block"; center: LatLng };
 
 export interface TownMarker {
   slug: string;
@@ -33,12 +30,19 @@ export interface TownMarker {
   active: boolean;
 }
 
+export interface UserLocation extends LatLng {
+  /** Radius in metres, as reported by the browser. */
+  accuracy: number;
+}
+
 interface MopMapProps {
   blocks: readonly MapBlock[];
   towns: readonly TownMarker[];
   frame: MapFrame | null;
-  blockFocus: MapBlockFocus | null;
   selectedId: string | null;
+  /** Blocks to ring as watchlist entries. Each must be in `blocks`. */
+  watchedIds: readonly string[];
+  userLocation: UserLocation | null;
   /** Share of the map's height hidden behind the results sheet (0 on desktop). */
   bottomInsetFraction: number;
   onSelectBlock: (block: MapBlock) => void;
@@ -61,6 +65,9 @@ const MAX_ZOOM = 19;
 /** Town count bubbles show at this zoom and below; block dots show at every zoom. */
 const TOWN_BUBBLE_MAX_ZOOM = 13;
 const HIGHLIGHT_EXTRA_RADIUS = 6;
+const WATCH_RING_EXTRA_RADIUS = 3;
+const WATCH_RING_COLOR = "#f59e0b";
+const USER_LOCATION_COLOR = "#2563eb";
 const NATIONAL_MAX_ZOOM = 12;
 const TOWN_ZOOM = 14;
 const BLOCK_ZOOM = 16;
@@ -70,6 +77,7 @@ const FIT_PADDING_PX = 24;
 const FIT_PADDING_TOP_PX = 60;
 /** The whole-island view only needs to clear the top edge; the map key then overlaps open sea. */
 const NATIONAL_PADDING_TOP_PX = 16;
+const ACCURACY_PANE = "mop-radar-accuracy";
 
 /** Busier cohorts draw first so the ones buyers care about sit on top. */
 const DRAW_ORDER: Record<Cohort, number> = { mature: 0, later: 1, upcoming: 2, just_mopped: 3 };
@@ -139,7 +147,9 @@ function updateViewLimits(map: L.Map) {
   map.setMinZoom(minZoom);
 }
 
-function applyFrame(map: L.Map, frame: Pick<MapFrame, "points" | "center">, insetFraction: number, animate: boolean) {
+type FrameTarget = MapFrame extends infer F ? (F extends MapFrame ? Omit<F, "key"> : never) : never;
+
+function applyFrame(map: L.Map, frame: FrameTarget, insetFraction: number, animate: boolean) {
   const insetPx = map.getSize().y * insetFraction;
   const padding: L.FitBoundsOptions = {
     paddingTopLeft: [FIT_PADDING_PX, FIT_PADDING_TOP_PX],
@@ -147,12 +157,17 @@ function applyFrame(map: L.Map, frame: Pick<MapFrame, "points" | "center">, inse
     animate,
   };
 
-  if (frame.points === null) {
+  if (frame.kind === "island") {
     map.fitBounds(islandBounds(), {
       ...padding,
       paddingTopLeft: [FIT_PADDING_PX, NATIONAL_PADDING_TOP_PX],
       maxZoom: NATIONAL_MAX_ZOOM,
     });
+    return;
+  }
+  if (frame.kind === "block") {
+    const zoom = Math.max(BLOCK_ZOOM, map.getZoom());
+    map.setView(centerAbove(map, frame.center, zoom, insetPx), zoom, { animate });
     return;
   }
   if (frame.points.length > 1) {
@@ -170,8 +185,9 @@ export default function MopMap({
   blocks,
   towns,
   frame,
-  blockFocus,
   selectedId,
+  watchedIds,
+  userLocation,
   bottomInsetFraction,
   onSelectBlock,
   onSelectTown,
@@ -179,12 +195,13 @@ export default function MopMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const rendererRef = useRef<L.Canvas | null>(null);
+  const accuracyRendererRef = useRef<L.Renderer | null>(null);
   const blockLayerRef = useRef<L.LayerGroup | null>(null);
   const townLayerRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef(new Map<string, L.CircleMarker>());
   const highlightRef = useRef<L.CircleMarker | null>(null);
-  const lastFrameKeyRef = useRef<string | null>(null);
-  const lastBlockFocusKeyRef = useRef<string | null>(null);
+  const watchRingsRef = useRef<L.CircleMarker[]>([]);
+  const appliedFrameKeysRef = useRef(new Set<string>());
   const insetFractionRef = useRef(bottomInsetFraction);
   const handlersRef = useRef({ onSelectBlock, onSelectTown });
 
@@ -212,7 +229,7 @@ export default function MopMap({
     map.setView(islandBounds().getCenter(), MIN_ZOOM, { animate: false });
     updateViewLimits(map);
     // Start on the national view before any tiles load, so none are fetched for a throwaway view.
-    applyFrame(map, { points: null }, insetFractionRef.current, false);
+    applyFrame(map, { kind: "island" }, insetFractionRef.current, false);
     map.attributionControl.setPrefix(LEAFLET_PREFIX);
     L.control.zoom({ position: "topright" }).addTo(map);
     L.tileLayer(TILE_URL, { minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, attribution: ONEMAP_ATTRIBUTION }).addTo(map);
@@ -229,6 +246,9 @@ export default function MopMap({
     renderer._redraw = function (this: typeof renderer) {
       if (this._ctx) redraw.call(this);
     };
+    // The location accuracy circle sits below the block dots, in its own SVG pane.
+    map.createPane(ACCURACY_PANE).style.zIndex = "350";
+    const accuracyRenderer = L.svg({ pane: ACCURACY_PANE });
     const blockLayer = L.layerGroup().addTo(map);
     const townLayer = L.layerGroup().addTo(map);
     const markers = markersRef.current;
@@ -242,6 +262,7 @@ export default function MopMap({
         currentRadius = radius;
         markers.forEach((marker) => marker.setRadius(radius));
         highlightRef.current?.setRadius(radius + HIGHLIGHT_EXTRA_RADIUS);
+        watchRingsRef.current.forEach((ring) => ring.setRadius(radius + WATCH_RING_EXTRA_RADIUS));
       }
       if (zoom > TOWN_BUBBLE_MAX_ZOOM) map.removeLayer(townLayer);
       else if (!map.hasLayer(townLayer)) townLayer.addTo(map);
@@ -253,21 +274,24 @@ export default function MopMap({
 
     mapRef.current = map;
     rendererRef.current = renderer;
+    accuracyRendererRef.current = accuracyRenderer;
     blockLayerRef.current = blockLayer;
     townLayerRef.current = townLayer;
+    const appliedFrameKeys = appliedFrameKeysRef.current;
 
     return () => {
       map.off("zoomend", handleZoom);
       map.off("resize", handleResize);
       map.remove();
       markers.clear();
+      appliedFrameKeys.clear();
       mapRef.current = null;
       rendererRef.current = null;
+      accuracyRendererRef.current = null;
       blockLayerRef.current = null;
       townLayerRef.current = null;
       highlightRef.current = null;
-      lastFrameKeyRef.current = null;
-      lastBlockFocusKeyRef.current = null;
+      watchRingsRef.current = [];
     };
   }, []);
 
@@ -312,6 +336,15 @@ export default function MopMap({
         zIndexOffset: town.active ? 1000 : 0,
       });
       marker.on("click", () => handlersRef.current.onSelectTown(town.slug));
+      // Leaflet makes the bubble focusable but doesn't activate it from the keyboard. Its element is
+      // recreated each time the bubbles are hidden and shown again on zoom, so attach on every add.
+      marker.on("add", () => {
+        marker.getElement()?.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          handlersRef.current.onSelectTown(town.slug);
+        });
+      });
       layer.addLayer(marker);
     }
   }, [towns]);
@@ -321,11 +354,36 @@ export default function MopMap({
     const renderer = rendererRef.current;
     if (!map || !renderer) return;
 
-    highlightRef.current?.remove();
-    highlightRef.current = null;
+    const radius = dotRadius(map.getZoom()) + WATCH_RING_EXTRA_RADIUS;
+    const rings = watchedIds.flatMap((id) => {
+      const marker = markersRef.current.get(id);
+      if (!marker) return [];
+      return [
+        L.circleMarker(marker.getLatLng(), {
+          renderer,
+          radius,
+          color: WATCH_RING_COLOR,
+          weight: 3,
+          fill: false,
+          interactive: false,
+        }).addTo(map),
+      ];
+    });
+    watchRingsRef.current = rings;
+    return () => {
+      rings.forEach((ring) => ring.remove());
+      watchRingsRef.current = [];
+    };
+  }, [watchedIds, blocks]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const renderer = rendererRef.current;
+    if (!map || !renderer) return;
+
     const marker = selectedId ? markersRef.current.get(selectedId) : undefined;
     if (!marker) return;
-    highlightRef.current = L.circleMarker(marker.getLatLng(), {
+    const highlight = L.circleMarker(marker.getLatLng(), {
       renderer,
       radius: dotRadius(map.getZoom()) + HIGHLIGHT_EXTRA_RADIUS,
       color: "#0f172a",
@@ -333,24 +391,53 @@ export default function MopMap({
       fill: false,
       interactive: false,
     }).addTo(map);
+    highlightRef.current = highlight;
+    return () => {
+      highlight.remove();
+      highlightRef.current = null;
+    };
   }, [selectedId, blocks]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !frame || frame.key === lastFrameKeyRef.current) return;
-    const isFirst = lastFrameKeyRef.current === null;
-    lastFrameKeyRef.current = frame.key;
-    applyFrame(map, frame, insetFractionRef.current, !isFirst && !prefersReducedMotion());
-  }, [frame]);
+    const accuracyRenderer = accuracyRendererRef.current;
+    if (!map || !accuracyRenderer || !userLocation) return;
+
+    const center: L.LatLngTuple = [userLocation.lat, userLocation.lng];
+    const accuracy = L.circle(center, {
+      renderer: accuracyRenderer,
+      radius: userLocation.accuracy,
+      color: USER_LOCATION_COLOR,
+      weight: 1,
+      opacity: 0.5,
+      fillColor: USER_LOCATION_COLOR,
+      fillOpacity: 0.12,
+      interactive: false,
+    }).addTo(map);
+    const pin = L.marker(center, {
+      icon: L.divIcon({
+        className: "user-location",
+        iconSize: [0, 0],
+        html: '<span class="user-location__dot" role="img" aria-label="Your approximate location"></span>',
+      }),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 2000,
+    }).addTo(map);
+    return () => {
+      accuracy.remove();
+      pin.remove();
+    };
+  }, [userLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !blockFocus || blockFocus.key === lastBlockFocusKeyRef.current) return;
-    lastBlockFocusKeyRef.current = blockFocus.key;
-    const zoom = Math.max(BLOCK_ZOOM, map.getZoom());
-    const insetPx = map.getSize().y * insetFractionRef.current;
-    map.setView(centerAbove(map, blockFocus.center, zoom, insetPx), zoom, { animate: !prefersReducedMotion() });
-  }, [blockFocus]);
+    const applied = appliedFrameKeysRef.current;
+    if (!map || !frame || applied.has(frame.key)) return;
+    const isFirst = applied.size === 0;
+    applied.add(frame.key);
+    applyFrame(map, frame, insetFractionRef.current, !isFirst && !prefersReducedMotion());
+  }, [frame]);
 
   return (
     <div

@@ -55,11 +55,11 @@ export interface NeighbouringTown {
   km: number;
 }
 
-/** Nearest other towns (centre to centre) that have results for the view. */
+/** Nearest other towns (centre to centre) that have results, counted by `countFor`. */
 export function neighbouringTowns(
   towns: readonly TownSummary[],
   fromSlug: string,
-  view: ResultsView,
+  countFor: (town: TownSummary) => number,
   limit = 3,
 ): NeighbouringTown[] {
   const from = towns.find((town) => town.slug === fromSlug);
@@ -69,7 +69,7 @@ export function neighbouringTowns(
     .map((town) => ({
       slug: town.slug,
       name: town.name,
-      count: townCountForView(town, view),
+      count: countFor(town),
       km: haversineKm(from.center, town.center),
     }))
     .filter((town) => town.count > 0)

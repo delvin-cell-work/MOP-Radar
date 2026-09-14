@@ -10,47 +10,46 @@ the codebase can be rebranded.
 
 ## Status
 
-Build order (from the product brief). Stop and show the user after each step.
+Build order (from the product brief). Stop and show the user after each step, unless they say
+otherwise.
 
-1. **Done:** data pipeline, MOP derivation, block map locations, tests, weekly refresh
-   workflow
-2. **Done:** map-first results screen. The user reviewed it in `npm run dev` and approved.
-3. **Done (2026-09-14), awaiting the user's review:** geolocation and fallbacks. It opens on the
-   national view, snaps to the nearest town, and remembers the town (see Geolocation below).
-4. **Next:** filters, block detail, watchlist
-5. Email capture, compliance footer, polish
+1. **Done:** data pipeline, MOP derivation, block map locations, tests, weekly refresh workflow.
+2. **Done and approved:** map-first results screen.
+3. **Done:** geolocation and fallbacks, plus the user's refinements (back button, no town
+   dropdown, tabs in the sheet, zoom and pan limits).
+4. **Done (2026-09-15):** filters, block detail, watchlist, current-location pin with "Locate me".
+   Built overnight at the user's request ("proceed with step 5 after and push to live"), so the
+   user has not reviewed it yet.
+5. **In progress (2026-09-15):** email alert signup, CEA footer, polish. See Remaining work.
 
-### Where we left off (2026-09-14)
+### Session log
 
-- Step 3 is built and verified. Show it to the user and wait for approval before step 4.
-- Verification:
-  - vitest: 189 tests.
-  - A browser script covered nine location scenarios in both `next dev` and a production
-    build: granted, repeat visit, denied, timeout, outside Singapore, non-HTTPS, unsupported,
-    never-answered prompt, desktop.
-  - A step 2 regression pass also ran.
-  - Lighthouse mobile (local production build): performance 90–91, accessibility 100,
-    best practices 92, SEO 100.
-- Best practices dropped from 96 to 92 because of `geolocation-on-start`. Requesting location on
-  load is what the brief specifies; keep it unless the user decides otherwise.
-- **Decision 1 (performance): resolved.** No static-map image is needed. On the live site,
-  Lighthouse mobile scored performance 95 in two runs (LCP 2.9 s simulated), accessibility 100,
-  best practices 92, SEO 100.
-- **Decision 2 (still open, ask the user):** in the full-screen map layout, should the four CEA
-  details always be visible in the bottom bar with the disclosure, or one tap away? This is
-  needed before step 5.
-- The agent still needs to register for OneMap before launch.
+- **2026-09-15 overnight:** the user went to bed and asked for step 4, then step 5, both pushed to
+  production. Step 4 was verified (unit tests, lint, typecheck, `npm run e2e` against `next dev`
+  and a production build, iOS 15 check) before pushing. Show the user what changed when they
+  are back.
+- Browser checks now live in `e2e/run.mjs` (committed). The Step 3 scratchpad scripts are gone;
+  everything they covered is in there.
+
+**Deployment (all live):**
 - **GitHub:** https://github.com/delvin-cell-work/MOP-Radar (public, `main`).
   - Commits are authored as `delvin-cell-work` with the GitHub no-reply email (repo-local git
-    config).
+    config), co-authored by Claude.
   - Pushes authenticate through `gh auth git-credential`, so the GitHub CLI's active account
-    must be `delvin-cell-work`.
-- **Vercel:** project imported from GitHub.
-  - Production: **https://mop-radar.vercel.app** (public).
+    must be `delvin-cell-work` (`gh api user --jq .login`). `empatechpower` is also signed in
+    but only has read access.
+  - Only commit or push when the user asks.
+- **Vercel:** production at **https://mop-radar.vercel.app** (public).
+  - Every push to `main` deploys to production.
   - Per-deployment, branch and team URLs are behind Vercel's Deployment Protection login, so run
     Lighthouse and browser checks against the production domain.
-  - Build command `npm run build` (runs the data pipeline first), Node.js 24.x.
-  - `engines.node` in package.json is pinned to `24.x` to match.
+  - Build command `npm run build` (runs the data pipeline first), Node.js 24.x;
+    `engines.node` is pinned to `24.x`.
+  - Vercel's Next.js adapter moves client chunks to `.next/static/immutable/chunks`, which
+    `check:browsers` handles.
+- **Live Lighthouse mobile** after step 3 (two runs): performance 95, accessibility 100, best
+  practices 92, SEO 100. Best practices is 92 only because of `geolocation-on-start`, which the
+  brief requires.
 - **Weekly data refresh is live:** `.github/workflows/refresh-data.yml` runs on Mondays at
   02:00 SGT, and on demand from the repo's Actions tab.
   - It runs the tests and the pipeline, then POSTs the Vercel deploy hook (repo secret
@@ -59,11 +58,89 @@ Build order (from the product brief). Stop and show the user after each step.
   - A failed run means the data wasn't refreshed. The site keeps serving the last good build.
   - The hook step retries (curl `--retry 4`, 30 s apart). The first manual run (2026-09-14) got
     HTTP 500 from Vercel while a push-triggered build of the same commit was still running.
-  - Uses `actions/checkout@v7` and `actions/setup-node@v7` (Node 24 runtime). v4 triggered GitHub's
-    Node 20 deprecation warning.
-- Local dev: `npm run data` (~1–3 min; it must finish before starting anything else in that
-  terminal), then `npm run dev` → http://localhost:3000. To see the first-visit flow again,
-  clear the `mop-radar:town` localStorage key.
+
+**Decisions:**
+- **Decision 1 (performance): resolved.** No static-map image is needed (live performance 95).
+- **Decision 2 (CEA placement): resolved 2026-09-15, "always visible".** One compact line with
+  the four CEA details in the bottom bar, under the disclosure, on every route.
+- **Step 4 choices (2026-09-15):**
+  - Location pin: shown whenever a fix arrives (automatically on a first visit; on later visits
+    via a "Locate me" button, which also re-centres on the nearest town). Coordinates are never
+    stored.
+  - Block detail opens inside the results panel, the map focuses the block, and the URL
+    (`?town=…&block=…`) can be shared. A header "Watchlist" button shows starred blocks in the
+    panel, ringed on the map.
+
+**Open items and offers the user hasn't answered:**
+- The agent needs to register for OneMap before launch.
+- Vercel Hobby is non-commercial only, so this lead-generation tool needs Vercel **Pro** before
+  launch.
+- README.md is still create-next-app boilerplate in the public repo. Replacing it with a short
+  MOP Radar README was offered.
+- On desktop, the "Just passed MOP" tab label wraps to two lines in the 420 px side panel.
+  Shortening the label or widening the panel was offered.
+- Map dot taps aren't covered by `e2e/run.mjs` (dots are canvas-drawn); check them by hand.
+
+**Local dev:**
+- `npm run data` (~1–3 min; it must finish before starting anything else in that terminal),
+  then `npm run dev` → http://localhost:3000.
+- Only one `next dev` can run per project. The user often has theirs running on :3000, so
+  verify dev mode against it rather than starting another.
+- To see the first-visit flow again, clear the `mop-radar:town` localStorage key.
+
+## Remaining work (from the product brief)
+
+**Step 5: email capture, compliance footer, polish**
+- **Optional email alert signup** at the bottom of the watchlist: "Email me when blocks on my
+  watchlist hit MOP."
+  - The email field and PDPA consent checkbox (unticked by default) are both required, with a
+    plain-English purpose statement.
+  - POST to a single serverless endpoint that stores `{email, watchlist, town, consent
+    timestamp}`. A single table or KV store is fine.
+  - This is the agent's lead capture. It must be optional and never a wall in front of results.
+  - Every email must carry a working unsubscribe link.
+- **CEA footer on every route** (see Compliance), sourced from env vars, always visible. The
+  build fails if any are missing.
+
+## Filters, block detail, watchlist (step 4)
+
+- **Filters** (`lib/filters.ts`, `components/FilterSheet.tsx`), saved in `mop-radar:filters:v1`:
+  - flat types (any of), leave out one flat type, leave out blocks with rental flats, MOP window
+    (6, 12, 18, 24, 36, 48, 60 months; default 24), block age, 12-month resale activity.
+  - They apply to the list, map dots, town counts, bubbles, headings and the national list.
+  - The MOP window replaces cohort matching for the tabs: Just passed MOP is `0 ≤ m < window`,
+    Coming up is `−window ≤ m < 0`, All ignores it. At 24 months this equals the cohorts. Wider
+    windows also load `map/mature.json` or `map/later.json` (`cohortsForView`).
+  - With default filters, town counts come from `meta.json`; otherwise from the map points
+    (so the 8 unlocated blocks aren't counted when filters are on).
+  - The sheet is a modal (`role="dialog"`, focus trap, Escape, focus returns to the opener), not
+    `<dialog>` (Safari 15.4+). A "N filters on · Clear filters" bar sits above the list.
+  - The empty state offers the first wider MOP window with results, clearing filters, the other
+    tabs and neighbouring towns.
+- **Block detail** (`components/BlockDetail.tsx`) opens in the results panel:
+  - URL state `?town=<slug>&block=<id>` via `lib/url-state.ts` (a `useSyncExternalStore` over
+    `location.search` plus native `history.pushState`, which Next's router tolerates). Not
+    `useSearchParams`, which would client-render the page up to a Suspense boundary.
+  - Opening from the app pushes a history entry, so Back (button or browser) closes detail;
+    switching block to block replaces it. A shared link has no in-app entry, so closing it
+    shows that block's town.
+  - A shared link skips the automatic location request.
+  - Content: status chip, card facts, completion/storeys/flats/resale count, the WhatsApp link
+    (`lib/agent.ts`; hidden unless `NEXT_PUBLIC_AGENT_NAME` and `NEXT_PUBLIC_AGENT_WHATSAPP`
+    are set; the message names the block only), a sparkline for the flat type with the most
+    resales when it has 5+ (`sparklineSeries`), and the resale table (20 rows, then "Show all").
+  - `public/data/tx/<town>.json` loads only when detail opens.
+- **Watchlist** (`lib/watchlist.ts`, `components/WatchlistPanel.tsx`), saved in
+  `mop-radar:watchlist:v1` as `{id, town, addedAt}` so each block's town file can be loaded.
+  Stars on cards and the detail header. The header button toggles the panel; the map fits and
+  rings (amber) the saved blocks, which get a dot even when the tab or filters hide them.
+- **Stores:** `lib/local-store.ts` is a JSON localStorage store for `useSyncExternalStore`
+  (snapshot cached by raw string, memory fallback when storage is blocked).
+- **Location pin:** blue dot plus an accuracy circle (SVG pane under the dots), labelled "Your
+  approximate location", with a map key entry. Session state only. "Locate me" (below the zoom
+  buttons, hidden when location is unsupported or the page isn't HTTPS) requests location,
+  saves the nearest town and frames the town plus the visitor. Failures show a short note beside
+  the button (`LOCATE_ME_MESSAGES`), never a toast.
 
 ## Commands
 
@@ -74,6 +151,7 @@ npm run typecheck       # next typegen && tsc --noEmit
 npm run lint
 npm run build           # prebuild: npm run data · postbuild: npm run check:browsers
 npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iOS 15.0 can't run
+npm run e2e -- <url>    # browser scenarios (system Chrome via playwright-core); ONLY=name,name to filter
 ```
 
 - `public/data/` is generated and gitignored. Run `npm run data` before `npm run dev`.
@@ -89,7 +167,9 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
   - `ResultsSheet.tsx`: bottom sheet on mobile, side panel from `lg`.
   - `TownOverview.tsx`: national view list of towns ranked by count, which doubles as the town
     picker.
-  - `BlockCard`, `MopStatusChip`, `ViewTabs`, `EmptyState`, `MapLegend`, `SiteFooter`.
+  - `BlockCard` (uses `BlockSummary`), `BlockDetail`, `TransactionTable`, `PriceSparkline`,
+    `FilterSheet`, `WatchlistPanel`, `WatchStar`, `MopStatusChip`, `ViewTabs`, `EmptyState`,
+    `MapLegend`, `SiteFooter`.
 - `lib/`: shared by pipeline and app. Pure, no Node or browser APIs at import time.
   - `mop.ts`: MOP derivation (the core logic).
   - `months.ts`: integer month arithmetic.
@@ -104,10 +184,14 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
   - `format.ts`: all display strings for MOP, prices, streets and months.
   - `cohort-style.ts`: status colours.
   - `compliance.ts`: verbatim disclosure.
+  - `filters.ts`, `watchlist.ts`, `local-store.ts`, `stores.ts`: filters and watchlist state.
+  - `url-state.ts`: the shareable block link. `transactions.ts`: resale rows and sparkline series.
+  - `agent.ts`: agent contact from env vars and the WhatsApp link.
 - `scripts/build-data.ts`: pipeline entry. `scripts/pipeline/`: data.gov.sg client, Zod
   schemas, CSV parser, `geo-match.ts`. `scripts/check-browser-support.mjs`: post-build iOS 15
   guard. Never import `scripts/` from `app/` or `components/`.
 - `tests/`: vitest (pure logic only; UI is verified in a real browser).
+- `e2e/run.mjs`: browser scenarios for location, regressions, framing, reflow and step 4 flows.
 - `.github/workflows/refresh-data.yml`: weekly cron → tests → pipeline → Vercel deploy hook
   (secret `VERCEL_DEPLOY_HOOK_URL`).
 
@@ -139,7 +223,7 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
   - On success, `nearestTown` uses the centres in `lib/towns.ts` (no network), saves the town
     as `geolocation`, and the map animates to it.
 - **Repeat visit:** the saved town (`mop-radar:town` in localStorage) opens directly, and
-  geolocation is not called.
+  geolocation is not called until the visitor taps "Locate me".
 - **Manual choice always wins.** Every town pick is saved as `manual`: the town list, bubbles,
   neighbouring-town links, or a dot tap in another town. A location fix arriving after a pick is
   ignored.
@@ -165,7 +249,9 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
   - Geolocation results arrive in callbacks.
   - Map framing is derived: a `FrameIntent` follows the current town until the user acts on
     the map or list.
-  - `MapFrame` and `MapBlockFocus` carry a `key`; `MopMap` applies each once per key.
+  - `MapFrame` (`island`, `points` or `block`) carries a `key`. `MopMap` applies each key at
+    most once, ever, so closing block detail leaves the map where it is; actions that should
+    reframe bump a generation in the key.
 - **Town centres are shipped in `lib/towns.ts`.** The pipeline fails if a computed centre drifts
   more than 1 km, and prints the new value to paste in.
 - **Testing location in a browser:** stub `Navigator.prototype.geolocation` (and
@@ -241,8 +327,10 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
       (reported by the user at 667×930).
     - The regression script checks national framing after "Back to all towns" at 375×667,
       667×930 and 1280×800.
-  - Card tap: pans to the block.
-  - Dot tap in another town: switches the list town.
+  - Card or dot tap: opens block detail and centres the block (zoom 16, or closer if already
+    closer). A dot tap in another town also switches the list town.
+  - Town bubbles take Enter or Space: Leaflet makes them focusable but doesn't activate them
+    from the keyboard, so `MopMap` adds a keydown handler each time a bubble is added.
 - **Sheet overlap:**
   - The map is told the sheet's covered fraction (`bottomInsetFraction`) and offsets targets
     above it.

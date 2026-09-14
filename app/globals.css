@@ -102,3 +102,28 @@
   outline: 3px solid #0f766e;
   outline-offset: 2px;
 }
+
+/* The visitor's location. Blue, which no MOP status uses, with a white ring to stand apart from block dots. */
+
+.user-location__dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+}
+
+.user-location__dot--legend {
+  position: static;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  transform: none;
+}

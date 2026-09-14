@@ -73,7 +73,7 @@ describe("neighbouringTowns", () => {
   ];
 
   it("returns the nearest other towns with results, closest first", () => {
-    const result = neighbouringTowns(towns, "bishan", "just_mopped", 2);
+    const result = neighbouringTowns(towns, "bishan", (town) => townCountForView(town, "just_mopped"), 2);
     expect(result.map((t) => t.slug)).toEqual(["toa-payoh", "ang-mo-kio"]);
     expect(result[0].count).toBe(26);
     expect(result[0].km).toBeGreaterThan(1);
@@ -81,7 +81,7 @@ describe("neighbouringTowns", () => {
   });
 
   it("returns nothing for an unknown town", () => {
-    expect(neighbouringTowns(towns, "nowhere", "just_mopped")).toEqual([]);
+    expect(neighbouringTowns(towns, "nowhere", (town) => townCountForView(town, "just_mopped"))).toEqual([]);
   });
 });
 

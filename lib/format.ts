@@ -85,3 +85,33 @@ export function describeStatusBreakdown(withResales: number, total: number): str
   if (withResales === total) return "All with resales on record";
   return `${formatNumber(withResales)} with resales on record · ${formatNumber(total - withResales)} estimated`;
 }
+
+/** "Blk 622B Tampines Ave 12". */
+export function blockTitle(block: { blk_no: string; street: string }): string {
+  return `Blk ${block.blk_no} ${formatStreet(block.street)}`;
+}
+
+/** 1133 → "94 yrs 5 mths". */
+export function formatRemainingLease(months: number): string {
+  const years = Math.floor(months / 12);
+  const rest = months - years * 12;
+  const yearsLabel = `${years} ${years === 1 ? "yr" : "yrs"}`;
+  return rest === 0 ? yearsLabel : `${yearsLabel} ${rest} ${rest === 1 ? "mth" : "mths"}`;
+}
+
+/** "01 TO 03" → "1–3". */
+export function formatStoreyRange(range: string): string {
+  const match = /^(\d+) TO (\d+)$/.exec(range.trim());
+  return match ? `${Number(match[1])}–${Number(match[2])}` : range;
+}
+
+export function formatArea(sqm: number): string {
+  return `${Number.isInteger(sqm) ? sqm : sqm.toFixed(1)} m²`;
+}
+
+/** The time-window half of a results summary, e.g. "passed MOP in the last 24 months". */
+export function mopWindowPhrase(view: "just_mopped" | "upcoming" | "all", months: number): string | null {
+  if (view === "just_mopped") return `passed MOP in the last ${months} months`;
+  if (view === "upcoming") return `reach MOP in the next ${months} months`;
+  return null;
+}

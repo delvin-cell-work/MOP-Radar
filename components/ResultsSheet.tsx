@@ -28,8 +28,8 @@ interface ResultsSheetProps {
   snap: SheetSnap;
   onSnapChange: (snap: SheetSnap) => void;
   listId: string;
-  /** Always-visible controls above the header, such as the results tabs. */
-  controls: ReactNode;
+  /** Controls above the header, such as the results tabs. Omitted in block detail and the watchlist. */
+  controls?: ReactNode;
   header: ReactNode;
   children: ReactNode;
 }
@@ -119,8 +119,8 @@ export function ResultsSheet({ snap, onSnapChange, listId, controls, header, chi
       >
         <span aria-hidden="true" className="h-1.5 w-10 rounded-full bg-slate-300" />
       </button>
-      <div className="shrink-0 px-4 pb-3 lg:pt-4">{controls}</div>
-      <div className="shrink-0 border-b border-slate-100 px-4 pb-3">{header}</div>
+      {controls && <div className="shrink-0 px-4 pb-3 lg:pt-4">{controls}</div>}
+      <div className={`shrink-0 border-b border-slate-100 px-4 pb-3 ${controls ? "" : "lg:pt-4"}`}>{header}</div>
       <div id={listId} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 focus:outline-none">
         {children}
       </div>

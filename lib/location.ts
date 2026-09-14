@@ -15,6 +15,16 @@ export const LOCATING_MESSAGE = "Finding your nearest town… or pick one below.
 export const BROWSE_TOWNS_MESSAGE = "Pick a town to see its blocks.";
 
 /** One-line explainer above the town picker. Never an error toast. */
+/** Shown next to the "Locate me" button, which is already over the map. */
+export const LOCATE_ME_MESSAGES: Record<LocationFailure, string> = {
+  insecure: "Location isn't available on this page.",
+  unsupported: "This browser can't share your location.",
+  denied: "Location access is off for this site. You can turn it on in your browser settings.",
+  unavailable: "We couldn't find your location. Try again.",
+  timeout: "Finding your location took too long. Try again.",
+  outside_singapore: "You seem to be outside Singapore.",
+};
+
 export const LOCATION_FAILURE_MESSAGES: Record<LocationFailure, string> = {
   insecure: "Pick a town below to see its blocks.",
   unsupported: "Pick a town below to see its blocks.",

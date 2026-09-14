@@ -2,22 +2,22 @@
 
 import type { TownSummary } from "@/lib/data-contract";
 import { formatNumber } from "@/lib/format";
-import { townCountForView, type ResultsView } from "@/lib/views";
 
 interface TownOverviewProps {
   towns: readonly TownSummary[];
-  view: ResultsView;
+  /** Results per town slug for the current tab and filters. */
+  counts: Readonly<Record<string, number>>;
   onPick: (slug: string) => void;
 }
 
 /**
- * The national view's list: every town ranked by results for the current tab.
- * Useful before a town is known, and doubles as the town picker when location
- * is unavailable.
+ * The national view's list: every town ranked by results for the current tab
+ * and filters. Useful before a town is known, and doubles as the town picker
+ * when location is unavailable.
  */
-export function TownOverview({ towns, view, onPick }: TownOverviewProps) {
+export function TownOverview({ towns, counts, onPick }: TownOverviewProps) {
   const ranked = towns
-    .map((town) => ({ slug: town.slug, name: town.name, count: townCountForView(town, view) }))
+    .map((town) => ({ slug: town.slug, name: town.name, count: counts[town.slug] ?? 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   return (
