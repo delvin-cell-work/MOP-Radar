@@ -44,6 +44,9 @@ Build order (from the product brief). Stop and show the user after each step.
     config).
   - Pushes authenticate through `gh auth git-credential`, so the GitHub CLI's active account
     must be `delvin-cell-work`.
+- **Vercel:** project imported from GitHub.
+  - Build command `npm run build` (runs the data pipeline first), Node.js 24.x.
+  - `engines.node` in package.json is pinned to `24.x` to match.
 - **`.github/workflows/refresh-data.yml` is deliberately not pushed yet** (listed in
   `.git/info/exclude`). Add it once a Vercel project exists and the repo has the
   `VERCEL_DEPLOY_HOOK_URL` secret, otherwise the weekly run fails.
@@ -170,6 +173,11 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
   syntax (`??`, `??=`, class fields, one private field) regardless of browserslist. iOS 15.0
   parses all of it. What breaks iOS 15 is class static blocks and regex lookbehind (Safari
   16.4); `check:browsers` fails the build on those, and on unpolyfilled newer APIs.
+- `check:browsers` scans every `.js` file under `.next/static`.
+  - Locally, Turbopack puts client chunks in `static/chunks`.
+  - On Vercel, the Next.js adapter enables `supportsImmutableAssets`, which moves them to
+    `static/immutable/chunks`.
+  - The first Vercel deploy (2026-09-14) failed on a hard-coded `static/chunks` path.
 - Next's built-in polyfill module already covers `Array.prototype.at`, `flat`/`flatMap`,
   `Object.fromEntries`, `Object.hasOwn`, `trimStart`/`trimEnd` and `URL.canParse`, so don't add
   duplicates.

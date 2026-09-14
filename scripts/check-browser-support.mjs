@@ -8,13 +8,17 @@
  * chunk) and APIs that throw when called. Next.js's polyfill module already
  * covers Array.prototype.at, flat/flatMap, Object.fromEntries, Object.hasOwn,
  * String trimStart/trimEnd and URL.canParse, so those aren't flagged.
+ *
+ * Scans every .js file under .next/static: locally Turbopack writes client
+ * chunks to static/chunks, but on Vercel its adapter enables immutable assets
+ * and they land under static/immutable instead.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { parse } from "acorn";
 
-const CHUNKS_DIR = path.join(process.cwd(), ".next", "static", "chunks");
+const STATIC_DIR = path.join(process.cwd(), ".next", "static");
 
 const LOOKBEHIND = /\(\?<[=!]/;
 
@@ -56,15 +60,21 @@ function findSyntaxProblems(source) {
   return problems;
 }
 
-const files = readdirSync(CHUNKS_DIR).filter((file) => file.endsWith(".js"));
+const files = existsSync(STATIC_DIR)
+  ? readdirSync(STATIC_DIR, { recursive: true })
+      .map(String)
+      .filter((file) => file.endsWith(".js"))
+      .sort()
+  : [];
+
 if (files.length === 0) {
-  console.error(`No client chunks in ${CHUNKS_DIR}. Run next build first.`);
+  console.error(`No client JavaScript found under ${STATIC_DIR}. Run next build first.`);
   process.exit(1);
 }
 
 let failures = 0;
 for (const file of files) {
-  const source = readFileSync(path.join(CHUNKS_DIR, file), "utf8");
+  const source = readFileSync(path.join(STATIC_DIR, file), "utf8");
   const problems = findSyntaxProblems(source);
   for (const [pattern, label] of APIS) if (pattern.test(source)) problems.push(label);
   if (problems.length > 0) {
@@ -77,4 +87,4 @@ if (failures > 0) {
   console.error(`\n${failures} iOS 15 compatibility problem(s). Add a polyfill or change the code.`);
   process.exit(1);
 }
-console.log(`✓ ${files.length} client chunks are compatible with Safari on iOS 15.0`);
+console.log(`✓ ${files.length} client scripts are compatible with Safari on iOS 15.0`);
