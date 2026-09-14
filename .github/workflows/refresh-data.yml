@@ -1,0 +1,49 @@
+name: Weekly data refresh
+
+# Re-runs the pipeline against data.gov.sg every week. If it passes, triggers a
+# Vercel production deploy, whose build (`prebuild`) runs the pipeline again and
+# bakes fresh JSON into public/data. A failure here stops the deploy and shows up
+# as a failed workflow run, so stale or broken data is never published silently.
+#
+# Requires the repository secret VERCEL_DEPLOY_HOOK_URL
+# (Vercel → Project → Settings → Git → Deploy Hooks).
+
+on:
+  schedule:
+    # Mondays 02:00 SGT. HDB updates resale data most weekdays.
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests (MOP derivation, schemas)
+        run: npm test
+
+      - name: Build and validate data
+        run: npm run data
+
+      - name: Trigger Vercel deploy
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_URL secret is not set"
+            exit 1
+          fi
+          curl --fail --silent --show-error -X POST "$VERCEL_DEPLOY_HOOK_URL"

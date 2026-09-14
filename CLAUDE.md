@@ -33,8 +33,9 @@ Build order (from the product brief). Stop and show the user after each step.
     best practices 92, SEO 100.
 - Best practices dropped from 96 to 92 because of `geolocation-on-start`. Requesting location on
   load is what the brief specifies; keep it unless the user decides otherwise.
-- **Decision 1 (performance): decided.** No static-map image. Re-measure on a Vercel deploy now
-  that step 3 is done.
+- **Decision 1 (performance): resolved.** No static-map image is needed. On the live site,
+  Lighthouse mobile scored performance 95 in two runs (LCP 2.9 s simulated), accessibility 100,
+  best practices 92, SEO 100.
 - **Decision 2 (still open, ask the user):** in the full-screen map layout, should the four CEA
   details always be visible in the bottom bar with the disclosure, or one tap away? This is
   needed before step 5.
@@ -45,11 +46,17 @@ Build order (from the product brief). Stop and show the user after each step.
   - Pushes authenticate through `gh auth git-credential`, so the GitHub CLI's active account
     must be `delvin-cell-work`.
 - **Vercel:** project imported from GitHub.
+  - Production: **https://mop-radar.vercel.app** (public).
+  - Per-deployment, branch and team URLs are behind Vercel's Deployment Protection login, so run
+    Lighthouse and browser checks against the production domain.
   - Build command `npm run build` (runs the data pipeline first), Node.js 24.x.
   - `engines.node` in package.json is pinned to `24.x` to match.
-- **`.github/workflows/refresh-data.yml` is deliberately not pushed yet** (listed in
-  `.git/info/exclude`). Add it once a Vercel project exists and the repo has the
-  `VERCEL_DEPLOY_HOOK_URL` secret, otherwise the weekly run fails.
+- **Weekly data refresh is live:** `.github/workflows/refresh-data.yml` runs on Mondays at
+  02:00 SGT, and on demand from the repo's Actions tab.
+  - It runs the tests and the pipeline, then POSTs the Vercel deploy hook (repo secret
+    `VERCEL_DEPLOY_HOOK_URL`; hook `weekly-data-refresh` on `main`).
+  - The Vercel build runs the pipeline again and publishes the fresh data.
+  - A failed run means the data wasn't refreshed. The site keeps serving the last good build.
 - Local dev: `npm run data` (~1–3 min; it must finish before starting anything else in that
   terminal), then `npm run dev` → http://localhost:3000. To see the first-visit flow again,
   clear the `mop-radar:town` localStorage key.
@@ -268,8 +275,10 @@ npm run check:browsers  # fails if client chunks use syntax or APIs Safari on iO
 
 ## Performance
 
-**Decided (2026-09-14):** don't add the static-map image yet. Deploy to Vercel and re-measure
-Lighthouse mobile there. Revisit the static image only if performance is still under 90.
+**Resolved (2026-09-14):** no static-map image. Live Lighthouse mobile on
+https://mop-radar.vercel.app scored performance 95 in two runs (FCP 0.8 s, LCP 2.9 s simulated,
+layout shift 0.001; the LCP element is a zoom-10 OneMap tile). Revisit only if a later change
+drops performance under 90.
 
 After step 3 (national view first), local Lighthouse mobile scored performance 90–91, with a
 simulated LCP of 3.5 s (392–423 ms observed) and layout shift 0.001.
