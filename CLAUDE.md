@@ -57,6 +57,10 @@ Build order (from the product brief). Stop and show the user after each step.
     `VERCEL_DEPLOY_HOOK_URL`; hook `weekly-data-refresh` on `main`).
   - The Vercel build runs the pipeline again and publishes the fresh data.
   - A failed run means the data wasn't refreshed. The site keeps serving the last good build.
+  - The hook step retries (curl `--retry 4`, 30 s apart). The first manual run (2026-09-14) got
+    HTTP 500 from Vercel while a push-triggered build of the same commit was still running.
+  - Uses `actions/checkout@v7` and `actions/setup-node@v7` (Node 24 runtime). v4 triggered GitHub's
+    Node 20 deprecation warning.
 - Local dev: `npm run data` (~1–3 min; it must finish before starting anything else in that
   terminal), then `npm run dev` → http://localhost:3000. To see the first-visit flow again,
   clear the `mop-radar:town` localStorage key.

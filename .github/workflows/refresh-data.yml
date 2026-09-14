@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -46,4 +46,9 @@ jobs:
             echo "::error::VERCEL_DEPLOY_HOOK_URL secret is not set"
             exit 1
           fi
-          curl --fail --silent --show-error -X POST "$VERCEL_DEPLOY_HOOK_URL"
+          # The hook once answered HTTP 500 while a push-triggered build of the same
+          # commit was still running, so retry transient failures before failing.
+          curl --fail --silent --show-error --max-time 60 \
+            --retry 4 --retry-delay 30 --retry-all-errors \
+            -X POST "$VERCEL_DEPLOY_HOOK_URL"
+          echo
